@@ -329,7 +329,7 @@ void DhcpClient::Boot (void)
 
   if ((m_socket->SendTo (packet, 0, InetSocketAddress (Ipv4Address ("255.255.255.255")))) >= 0)
     {
-      NS_LOG_INFO ("DHCP DISCOVER sent");
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s DHCP DISCOVER sent");
     }
   else
     {
@@ -347,7 +347,6 @@ void DhcpClient::OfferHandler (DhcpHeader header)
     {
       Simulator::Remove (m_discoverEvent);
       m_offered = true;
-      NS_LOG_INFO ("Time wait to send request"<<m_collect);
       Simulator::Schedule (m_collect, &DhcpClient::Select, this);
     }
 }
@@ -451,7 +450,7 @@ void DhcpClient::AcceptAck (DhcpHeader header, Address from)
   Simulator::Remove (m_rebindEvent);
   Simulator::Remove (m_refreshEvent);
   Simulator::Remove (m_timeout);
-  NS_LOG_INFO ("DHCP ACK received");
+  NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () <<"s DHCP ACK received");
   Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
   int32_t ifIndex = ipv4->GetInterfaceForDevice (GetNode ()->GetDevice (m_device));
 

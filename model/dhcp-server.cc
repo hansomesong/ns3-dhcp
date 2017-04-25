@@ -36,6 +36,7 @@
 #include "dhcp-server.h"
 #include "dhcp-header.h"
 #include <ns3/ipv4.h>
+#include "ns3/lisp-etr-itr-application.h"
 #include <map>
 
 namespace ns3 {
@@ -317,13 +318,23 @@ void DhcpServer::SendOffer (DhcpHeader header, Address from)
 
 void DhcpServer::SendAck (DhcpHeader header, Address from)
 {
+	  //TODO should register the assigned @ip to Mapping Server.
+	  //TODO how to achieve
+NS_LOG_INFO("How many application in this node?"<<GetNode()->GetNApplications());
   DhcpHeader new_header;
   Address source;
   uint32_t tran;
   Ptr<Packet> packet = 0;
   Ipv4Address address;
   address = header.GetReq ();
-
+  //TODO:should send socket message to LispMNxTRApplication about RLOC change.
+  // It is impossible and not suggested to retrieve LispMNxTRApplication to call related method.
+  // It is better to achieve this by socket API.
+//  Ptr<Application> app = GetNode()->GetApplication(1);
+//  Ptr<LispEtrItrApplication> xTRApp = DynamicCast<LispEtrItrApplication>(app);
+//  NS_LOG_INFO("Get xTR app "<<xTRApp);
+//  xTRApp->SendMapRegisters();
+//  NS_LOG_INFO("Register again!!! "<<xTRApp);
   NS_LOG_INFO ("DHCP REQUEST from: " << InetSocketAddress::ConvertFrom (from).GetIpv4 () <<
                " source port: " <<  InetSocketAddress::ConvertFrom (from).GetPort () << " refreshed addr is =" << address);
 
