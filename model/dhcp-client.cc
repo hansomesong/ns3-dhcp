@@ -736,6 +736,19 @@ namespace ns3
 	NS_LOG_DEBUG("No Map Table in LispOverIpv4 object. Create one for it. Pointer value: "<<mapTableIpv4);
 
 	lisp->SetMapTablesIpv4(mapTableIpv4);
+        /**
+         * IMPORTANT: DO NOT FORGET TO CREATE LispStatistics for lispOverIpv4 object.
+         * Otherwise the statistics work in LispOverIpv4Impl::LispOutput will encounter
+         * segmentation fault (cause these two statistics-related object is not created!)
+         *
+         * TODO: At the first glance, you would say it is wrong to set a statistics object for ipv6,
+         * for a ipv4 lisp. However, note that ipv4 and ipv4 can be used mixly. for example
+         * inner header is ipv6, but the outheader may be ipv4.
+         *
+         */
+	Ptr<LispStatistics> statisticsForV4 = Create<LispStatistics> ();
+	Ptr<LispStatistics> statisticsForV6 = Create<LispStatistics> ();
+        lisp->SetLispStatistics (statisticsForV4, statisticsForV6);
 	NS_LOG_DEBUG("Notify lispOverIpv4 to add the EID-RLOC mapping in the newly created database");
 	//TODO: send message by socket.
       }
