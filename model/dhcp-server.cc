@@ -36,7 +36,9 @@
 #include "dhcp-server.h"
 #include "dhcp-header.h"
 #include <ns3/ipv4.h>
-#include "ns3/lisp-etr-itr-application.h"
+#include "ns3/lisp-over-ip.h"
+#include "ns3/lisp-mapping-socket.h"
+#include "ns3/mapping-socket-msg.h"
 #include <map>
 
 namespace ns3 {
@@ -104,6 +106,7 @@ DhcpServer::DhcpServer ()
 {
   NS_LOG_FUNCTION (this);
   m_nextAddressSeq = 1;
+  m_socket = 0;
 }
 
 DhcpServer::~DhcpServer ()
@@ -118,12 +121,16 @@ DhcpServer::DoDispose (void)
   Application::DoDispose ();
 }
 
+
+
 void DhcpServer::StartApplication (void)
 {
   NS_LOG_FUNCTION (this);
 
   NS_ASSERT_MSG (m_minAddress < m_maxAddress,"Invalid Address range");
+
   m_occupiedRange = 0;
+
   if (m_socket == 0)
     {
       uint32_t addrIndex;
@@ -134,7 +141,7 @@ void DhcpServer::StartApplication (void)
       ifIndex = ipv4->GetInterfaceForPrefix (m_poolAddress, m_poolMask);
       if (ifIndex >= 0)
         {
-    	  NS_LOG_INFO("DHCP Server is running on interface: "<<ifIndex);
+    	  NS_LOG_DEBUG("DHCP Server is running on interface: "<<ifIndex);
           for (addrIndex = 0; addrIndex < ipv4->GetNAddresses (ifIndex); addrIndex++)
             {
               if ((ipv4->GetAddress (ifIndex, addrIndex).GetLocal ().Get () & m_poolMask.Get ()) == m_poolAddress.Get () && ipv4->GetAddress (ifIndex, addrIndex).GetLocal ().Get () >= m_minAddress.Get () && ipv4->GetAddress (ifIndex, addrIndex).GetLocal ().Get () <= m_maxAddress.Get ())

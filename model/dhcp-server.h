@@ -121,6 +121,17 @@ private:
   Time m_renew;                          //!< The renewal time for an address
   Time m_rebind;                         //!< The rebinding time for an address
   EventId m_expiredEvent;                //!< The Event to trigger TimerHandler
+
+  /**
+   * To support LISP-MN, apart from m_socket communicating with DHCP client,
+   * we need to add a m_lispMappingSocket (declared as Socket but created as
+   * LispMappingSocket) to communicate with LispOverIpv4 object in the same node.
+   * (Note that we need to check whether LispOverIpv4 object is present in the node,
+   * if yes, create m_lispMappingSocket and connect it to m_lispProtoAddress and
+   * send newly assigned RLOC to LispOverIpv4 to insert the former to lisp database.)
+   */
+
+
 };
 
 } // namespace ns3
