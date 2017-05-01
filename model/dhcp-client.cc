@@ -610,7 +610,7 @@ namespace ns3
   {
     bool result = false;
     if(DhcpClient::IsLispCompatible()){
-	result = ((GetNode()->GetObject<LispOverIpv4>())->GetMapTablesV4() != 0);
+	result = ((GetNode()->GetObject<LispOverIpv4>())->GetMapTablesV4()->GetNMapEntriesLispDataBase() != 0);
     }
     return result;
   }
@@ -722,53 +722,22 @@ namespace ns3
     mapSockHeader.SetMapAddresses ((int) mapSockHeader.GetMapAddresses() | static_cast<int> (LispMappingSocket::MAPA_RLOC));
     // Question: why not consider LispMappingSocket::MAPA_EID, LispMappingSocket::MAPA_EIDMASK indicate implicitly the presence of EID?
     mapSockHeader.SetMapAddresses ((int) mapSockHeader.GetMapAddresses() | static_cast<int> (LispMappingSocket::MAPA_EIDMASK));
-    bool isMapTable = DhcpClient::IsLispDataBasePresent();
-    if(not isMapTable)
-      {
-	/**
-	 * Create a MapTable for lispOverIpv4
-	 * TODO: Maybe we can always create an empty Map Tables at starting xTR application.
-	 * In Ipv4L3protcol IpForward(), LocalDeliver(), Send(), we need check if
-	 * Map Table has 0 entries (empty Map Table).
-	 * It's not too logical for DHCP client to create Map Tables
-	 */
-	Ptr<MapTables> mapTableIpv4= Create<SimpleMapTables>();
-	NS_LOG_DEBUG("No Map Table in LispOverIpv4 object. Create one for it. Pointer value: "<<mapTableIpv4);
 
-	lisp->SetMapTablesIpv4(mapTableIpv4);
-        /**
-         * IMPORTANT: DO NOT FORGET TO CREATE LispStatistics for lispOverIpv4 object.
-         * Otherwise the statistics work in LispOverIpv4Impl::LispOutput will encounter
-         * segmentation fault (cause these two statistics-related object is not created!)
-         *
-         * TODO: At the first glance, you would say it is wrong to set a statistics object for ipv6,
-         * for a ipv4 lisp. However, note that ipv4 and ipv4 can be used mixly. for example
-         * inner header is ipv6, but the outheader may be ipv4.
-         *
-         */
-	Ptr<LispStatistics> statisticsForV4 = Create<LispStatistics> ();
-	Ptr<LispStatistics> statisticsForV6 = Create<LispStatistics> ();
-        lisp->SetLispStatistics (statisticsForV4, statisticsForV6);
-	NS_LOG_DEBUG("Notify lispOverIpv4 to add the EID-RLOC mapping in the newly created database");
-	//TODO: send message by socket.
-      }
-
-
-      NS_LOG_DEBUG("LISP-MN has already one Map Table. Now Update if possible map entry for EID");
-      /**
-       *  This newly assigned RLOC-EID mapping should be inserted into lisp
-       *  into database (instead of cache). It seems that in Lionel's implementation.
-       *  No field in message header to indicate the message should be inserted into
-       *  database or cache? Maybe in the method of LispOverIpv4 processing this message
-       *  should explicitly to decide which database it should manipulate.
-       */
-      uint8_t buf[256];
-      mapSockMsg->Serialize (buf);
-      mapSockHeader.SetMapType (LispMappingSocket::MAPM_DATABASE_UPDATE);
-      Ptr<Packet> packet = Create<Packet> (buf, 256);
-      packet->AddHeader (mapSockHeader);
-      m_lispMappingSocket->Send (packet);
-      NS_LOG_DEBUG("Update if possible map entry for EID. \n"<<mapSockMsg->GetLocators()->Print());
+    /**
+     *  This newly assigned RLOC-EID mapping should be inserted into lisp
+     *  into database (instead of cache). It seems that in Lionel's implementation.
+     *  No field in message header to indicate the message should be inserted into
+     *  database or cache? Maybe in the method of LispOverIpv4 processing this message
+     *  should explicitly to decide which database it should manipulate.
+     */
+    uint8_t buf[256];
+    mapSockMsg->Serialize (buf);
+    mapSockHeader.SetMapType (LispMappingSocket::MAPM_DATABASE_UPDATE);
+    Ptr<Packet> packet = Create<Packet> (buf, 256);
+    packet->AddHeader (mapSockHeader);
+    m_lispMappingSocket->Send (packet);
+    NS_LOG_DEBUG("Send newly assigned RLOC-EID to lispOverIpv4 so that LISP-MN's Database (not Cache) can be updated!");
+    NS_LOG_DEBUG("RLOCs sent by DHCP client: \n"<<mapSockMsg->GetLocators()->Print());
 
   }
 
