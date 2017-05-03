@@ -107,6 +107,7 @@ namespace ns3
     m_rebindEvent = EventId ();
     m_nextOfferEvent = EventId ();
     m_timeout = EventId ();
+    m_trigLisp = false;
   }
 
   DhcpClient::~DhcpClient ()
@@ -557,6 +558,9 @@ namespace ns3
 
     if (m_myAddress != m_offeredAddress)
       {
+	// A different IP@ to the previously assigned IP@, trigger LISP
+	std::cout<<"A different @IP!"<<std::endl;
+	m_trigLisp = true;
 	m_newLease (m_offeredAddress);
 	if (m_myAddress != Ipv4Address ("0.0.0.0"))
 	  {
@@ -588,8 +592,10 @@ namespace ns3
     m_remoteAddress = InetSocketAddress::ConvertFrom (from).GetIpv4 ();
     NS_LOG_INFO("Current DHCP Server is " << m_remoteAddress);
 
-    // Do lisp-related manipulation, such as create database, update map entry in database
-    if(DhcpClient::IsLispCompatible())
+    // Do lisp-related manipulation, such as create database, update map entry in database.
+    // Just m_trigLisp = true, which means has a different @IP, need to send the newly
+    // EID-RLOC mapping to lispOverIp.
+    if(DhcpClient::IsLispCompatible() and m_trigLisp)
       {
 	DhcpClient::LispDataBaseManipulation(DhcpClient::GetEid());
       }
@@ -599,6 +605,8 @@ namespace ns3
     m_timeout = Simulator::Schedule (m_lease, &DhcpClient::RemoveAndStart,
 				     this);
     m_state = REFRESH_LEASE;
+    // Do not forget to reset the following flag as false
+    m_trigLisp = false;
   }
 
   bool DhcpClient::IsLispCompatible()
@@ -663,8 +671,9 @@ namespace ns3
     {
       Ipv4Address eidAddress =
 	  ipv4->GetAddress (ifTunIndex, 0).GetLocal ();
-      Ipv4Mask eidMask = ipv4->GetAddress (ifTunIndex, 0).GetMask ();
-      eid = Create<EndpointId> (eidAddress, eidMask);
+//      Ipv4Mask eidMask = ipv4->GetAddress (ifTunIndex, 0).GetMask ();
+      // LISP-MN, as a single machine, we use "/32" as EID mask
+      eid = Create<EndpointId> (eidAddress, Ipv4Mask("/32"));
       NS_LOG_DEBUG("The retrieved EID:"<< eid->Print());
     }
     /**

@@ -242,6 +242,11 @@ private:
   TracedCallback<const Ipv4Address&> m_newLease;//!< Trace of new lease
   TracedCallback<const Ipv4Address&> m_expiry;  //!< Trace of expiry
 
+  //!<a flag to indicate whether to trigger LISP-related manipulation.
+  //for example, if DHCP cleint obtains a different IP@ than the previous one.
+  //do lisp-related manipulation otherwise no.
+  bool m_trigLisp;
+
   /**
    * To support LISP-MN, apart from m_socket communicating with DHCP client,
    * we need to add a m_lispMappingSocket (declared as Socket but created as
