@@ -102,6 +102,8 @@ private:
    */
   virtual void StartApplication (void);
 
+  void InitializeAddress(void);
+
   /*
    * \brief Stops the DHCP client application
    */

@@ -101,6 +101,7 @@ namespace ns3
   {
     NS_LOG_FUNCTION_NOARGS ();
     m_socket = 0;
+    m_lispMappingSocket =0;
     m_refreshEvent = EventId ();
     m_requestEvent = EventId ();
     m_discoverEvent = EventId ();
@@ -108,6 +109,9 @@ namespace ns3
     m_nextOfferEvent = EventId ();
     m_timeout = EventId ();
     m_trigLisp = false;
+    m_remoteAddress = Ipv4Address ("255.255.255.255");
+    m_myAddress = Ipv4Address ("0.0.0.0");
+    m_gateway = Ipv4Address ("0.0.0.0");
   }
 
   DhcpClient::~DhcpClient ()
@@ -140,10 +144,10 @@ namespace ns3
   DhcpClient::CreateSocket ()
   {
     NS_LOG_FUNCTION(this);
-    NS_LOG_DEBUG("DHCP client is creating Ipv4RawSocket.");
+    NS_LOG_DEBUG("DHCP client tries to create Ipv4RawSocket...");
     if (m_socket != 0)
       {
-	NS_LOG_WARN("DHCP client has already a Ipv4RawSocket! Who creates it?");
+	NS_LOG_WARN("DHCP client has already a Ipv4RawSocket!");
       }
     if (m_socket == 0)
       {
@@ -154,39 +158,15 @@ namespace ns3
 	m_socket->SetAllowBroadcast (true);
 	m_socket->Bind ();
 	m_socket->BindToNetDevice (GetNode ()->GetDevice (m_device));
+	m_socket->SetRecvCallback (MakeCallback (&DhcpClient::NetHandler, this));
       }
-    m_socket->SetRecvCallback (MakeCallback (&DhcpClient::NetHandler, this));
-  }
 
-  void DhcpClient::HandleMapSockRead (Ptr<Socket> lispMappingSocket)
-  {
-    NS_LOG_FUNCTION (this);
-    NS_LOG_DEBUG("Callback is called...");
-    Ptr<Packet> packet;
-    Address from;
-    while ((packet = lispMappingSocket->RecvFrom (from)))
-    {
-  	  NS_LOG_DEBUG("Indeed receive sth from lisp...");
-    }
-  }
-
-  void
-  DhcpClient::CloseSocket ()
-  {
-    m_socket->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
-    m_socket->Close ();
-  }
-
-  void
-  DhcpClient::StartApplication (void)
-  {
-    NS_LOG_FUNCTION_NOARGS ();
-    NS_LOG_DEBUG("Wifi Net device's status: "<<GetNode ()->GetDevice (m_device)->IsLinkUp ());
-    //-------------------------code to compatible with lisp--------------------
-    // #1: check the presence of LispOverIpv4 object in this node
-    // ns3::Object's GetObject method returns 0 if object not found
     Ptr<LispOverIp> lisp = GetNode ()->GetObject<LispOverIp> ();
-    if (lisp != 0)
+    if (m_lispMappingSocket !=0)
+      {
+	NS_LOG_WARN("DHCP client has already a Lisp Mapping Socket!");
+      }
+    else if (lisp != 0 and m_lispMappingSocket ==0)
       {
 	NS_LOG_DEBUG(
 	    "DHCP client is trying to connect to data plan (actually LispOverIpv4 object).");
@@ -201,23 +181,66 @@ namespace ns3
 	//It is very possible that m_lispProtoAddress is a special kind of address
 	//which is not an Ipv4 neither Ipv6 address.
 	NS_LOG_DEBUG("DHCP client has connected to " << m_lispProtoAddress);
+	m_lispMappingSocket->SetRecvCallback (
+	    MakeCallback (&DhcpClient::HandleMapSockRead, this));
       }
-    m_lispMappingSocket->SetRecvCallback (
-	MakeCallback (&DhcpClient::HandleMapSockRead, this));
+    NS_LOG_DEBUG("DHCP client finishes the socket create process");
+  }
 
-    // It seems that once the above socket has been established, the following does not work...
-    //-------------------------end of code to compatible with lisp-------------
+  void DhcpClient::HandleMapSockRead (Ptr<Socket> lispMappingSocket)
+  {
+    NS_LOG_FUNCTION (this);
+    Ptr<Packet> packet;
+    Address from;
+    while ((packet = lispMappingSocket->RecvFrom (from)))
+    {
+  	  NS_LOG_DEBUG("Receive sth from lisp. Now noting to do...");
+    }
+  }
 
-    m_remoteAddress = Ipv4Address ("255.255.255.255");
-    m_myAddress = Ipv4Address ("0.0.0.0");
-    m_gateway = Ipv4Address ("0.0.0.0");
+  void
+  DhcpClient::CloseSocket ()
+  {
+    m_socket->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
+    m_socket->Close ();
+    Ptr<LispOverIp> lisp = GetNode ()->GetObject<LispOverIp> ();
+    if (lisp != 0)
+      {
+	m_lispMappingSocket->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
+	m_lispMappingSocket->Close ();
+      }
+  }
+
+  void
+  DhcpClient::StartApplication (void)
+  {
+    NS_LOG_FUNCTION_NOARGS ();
+    NS_LOG_DEBUG("At the start of DCHP client application, Wifi Net device's status: "<<GetNode ()->GetDevice (m_device)->IsLinkUp ());
+    InitializeAddress();
+    CreateSocket ();
+    Boot ();
+    /**
+     * Append a Callback to the chain. I wonder what the chain refers to.
+     * It seems a container which can hold more than one elements.
+     * It's also logical for a net device to trigger more several callbacks if one event
+     * triggers. Thus, I think, here we should not add a Link change callback function
+     * each time DHCP client is started. Because link state change handler will start DHCP
+     * client which add link chagne callback function. Hence, I think, it is better to
+     * add this hanlder just in DHCP's constructor.
+     */
+    GetNode ()->GetDevice (m_device)->AddLinkChangeCallback (
+	MakeCallback (&DhcpClient::LinkStateHandler, this));
+    NS_LOG_DEBUG("Add a Link Change Callback to net device with index: "<<unsigned(m_device));
+  }
+
+  void DhcpClient::InitializeAddress()
+  {
     Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
     uint32_t ifIndex = ipv4->GetInterfaceForDevice (
 	GetNode ()->GetDevice (m_device));
-    NS_LOG_DEBUG("DHCP client is running on interface: "<<unsigned(ifIndex));
-    uint32_t i;
+//    NS_LOG_DEBUG("DHCP client is running on interface: "<<unsigned(ifIndex));
     bool found = false;
-    for (i = 0; i < ipv4->GetNAddresses (ifIndex); i++)
+    for (uint32_t i = 0; i < ipv4->GetNAddresses (ifIndex); i++)
       {
 	if (ipv4->GetAddress (ifIndex, i).GetLocal () == m_myAddress)
 	  {
@@ -230,10 +253,6 @@ namespace ns3
 	    ifIndex,
 	    Ipv4InterfaceAddress (Ipv4Address ("0.0.0.0"), Ipv4Mask ("/0")));
       }
-    CreateSocket ();
-//    GetNode ()->GetDevice (m_device)->AddLinkChangeCallback (
-//	MakeCallback (&DhcpClient::LinkStateHandler, this));
-    Boot ();
   }
 
   void
@@ -282,12 +301,19 @@ namespace ns3
   DhcpClient::LinkStateHandler (void)
   {
     NS_LOG_FUNCTION_NOARGS ();
-    if (GetNode ()->GetDevice (m_device)->IsLinkUp ())
+    bool linkUp = GetNode ()->GetDevice (m_device)->IsLinkUp ();
+    if (linkUp)
       {
+	/**
+	 * ATTENTION: It seems that AdHoc has no link change... I never find this
+	 * handler is triggered until now if using Adhoc mode.
+	 */
 	NS_LOG_INFO("Link up at " << Simulator::Now ().GetSeconds ());
-	//StartApplication ();
+	InitializeAddress();
+	CreateSocket ();
+	Boot ();
       }
-    else
+    else if(not linkUp)
       {
 	//TODO: If Link down, under LISP-MN => Assigned RLOC is lost => Need to update lisp
 	//data plan database.
@@ -301,12 +327,18 @@ namespace ns3
 	Ptr<Ipv4> ipv4MN = GetNode ()->GetObject<Ipv4> ();
 	int32_t ifIndex = ipv4MN->GetInterfaceForDevice (
 	    GetNode ()->GetDevice (m_device));
-	NS_ASSERT(ifIndex >= 0);
+	NS_ASSERT_MSG(ifIndex >= 0, "interface index should be >=0, but:"<<ifIndex);
 	for (uint32_t i = 0; i < ipv4MN->GetNAddresses (ifIndex); i++)
 	  {
 	    if (ipv4MN->GetAddress (ifIndex, i).GetLocal () == m_myAddress)
 	      {
 		ipv4MN->RemoveAddress (ifIndex, i);
+		// Still set ipv4 address to 0.0.0.0
+		// Since when link down, it is still possible to transmit IP packet,
+		// which causes problems if no IP address.
+		ipv4MN->AddAddress (
+		    ifIndex,
+		    Ipv4InterfaceAddress (Ipv4Address ("0.0.0.0"), Ipv4Mask ("/0")));
 		break;
 	      }
 	  }
@@ -327,6 +359,7 @@ namespace ns3
 		break;
 	      }
 	  }
+	NS_LOG_INFO("Finish to processing link down related manipulation...");
       }
   }
 
