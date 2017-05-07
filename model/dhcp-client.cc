@@ -181,6 +181,7 @@ namespace ns3
   DhcpClient::StartApplication (void)
   {
     NS_LOG_FUNCTION_NOARGS ();
+    NS_LOG_DEBUG("Wifi Net device's status: "<<GetNode ()->GetDevice (m_device)->IsLinkUp ());
     //-------------------------code to compatible with lisp--------------------
     // #1: check the presence of LispOverIpv4 object in this node
     // ns3::Object's GetObject method returns 0 if object not found
@@ -230,8 +231,8 @@ namespace ns3
 	    Ipv4InterfaceAddress (Ipv4Address ("0.0.0.0"), Ipv4Mask ("/0")));
       }
     CreateSocket ();
-    GetNode ()->GetDevice (m_device)->AddLinkChangeCallback (
-	MakeCallback (&DhcpClient::LinkStateHandler, this));
+//    GetNode ()->GetDevice (m_device)->AddLinkChangeCallback (
+//	MakeCallback (&DhcpClient::LinkStateHandler, this));
     Boot ();
   }
 
@@ -284,12 +285,13 @@ namespace ns3
     if (GetNode ()->GetDevice (m_device)->IsLinkUp ())
       {
 	NS_LOG_INFO("Link up at " << Simulator::Now ().GetSeconds ());
-	StartApplication ();
+	//StartApplication ();
       }
     else
       {
 	//TODO: If Link down, under LISP-MN => Assigned RLOC is lost => Need to update lisp
 	//data plan database.
+//	NS_ASSERT_MSG(true==false, "link state chagne, we catch u! Now can delete this assert...");
 	NS_LOG_INFO("Link down at " << Simulator::Now ().GetSeconds ()); //reinitialization
 	Simulator::Remove (m_refreshEvent); //stop refresh timer!!!!
 	Simulator::Remove (m_rebindEvent);
