@@ -53,7 +53,6 @@
 //#include "ns3/locators-impl.h"
 #include "ns3/simple-map-tables.h"
 
-
 #include "dhcp-client.h"
 #include "dhcp-server.h"
 #include "dhcp-header.h"
@@ -74,7 +73,7 @@ namespace ns3
 	    UintegerValue (0), MakeUintegerAccessor (&DhcpClient::m_device),
 	    MakeUintegerChecker<uint32_t> ()).AddAttribute (
 	    "RTRS", "Time for retransmission of Discover message",
-	    TimeValue (Seconds (5)), MakeTimeAccessor (&DhcpClient::m_rtrs),
+	    TimeValue (Seconds (10)), MakeTimeAccessor (&DhcpClient::m_rtrs),
 	    MakeTimeChecker ()).AddAttribute (
 	    "Collect", "Time for which offer collection starts",
 	    TimeValue (Seconds (1.0)),
@@ -101,7 +100,7 @@ namespace ns3
   {
     NS_LOG_FUNCTION_NOARGS ();
     m_socket = 0;
-    m_lispMappingSocket =0;
+    m_lispMappingSocket = 0;
     m_refreshEvent = EventId ();
     m_requestEvent = EventId ();
     m_discoverEvent = EventId ();
@@ -158,15 +157,17 @@ namespace ns3
 	m_socket->SetAllowBroadcast (true);
 	m_socket->Bind ();
 	m_socket->BindToNetDevice (GetNode ()->GetDevice (m_device));
-	m_socket->SetRecvCallback (MakeCallback (&DhcpClient::NetHandler, this));
       }
+    // Since in LinkStateChange handler, RecvCallback has been removed...
+    // Thus, here in anycase, we should add this callback...
+    m_socket->SetRecvCallback (MakeCallback (&DhcpClient::NetHandler, this));
 
     Ptr<LispOverIp> lisp = GetNode ()->GetObject<LispOverIp> ();
-    if (m_lispMappingSocket !=0)
+    if (m_lispMappingSocket != 0)
       {
 	NS_LOG_WARN("DHCP client has already a Lisp Mapping Socket!");
       }
-    else if (lisp != 0 and m_lispMappingSocket ==0)
+    else if (lisp != 0 and m_lispMappingSocket == 0)
       {
 	NS_LOG_DEBUG(
 	    "DHCP client is trying to connect to data plan (actually LispOverIpv4 object).");
@@ -181,21 +182,24 @@ namespace ns3
 	//It is very possible that m_lispProtoAddress is a special kind of address
 	//which is not an Ipv4 neither Ipv6 address.
 	NS_LOG_DEBUG("DHCP client has connected to " << m_lispProtoAddress);
+	// Since we haven't touched lispMappingSocket's callback, here we just
+	// add callback when need to create a mapping socket...
 	m_lispMappingSocket->SetRecvCallback (
 	    MakeCallback (&DhcpClient::HandleMapSockRead, this));
       }
     NS_LOG_DEBUG("DHCP client finishes the socket create process");
   }
 
-  void DhcpClient::HandleMapSockRead (Ptr<Socket> lispMappingSocket)
+  void
+  DhcpClient::HandleMapSockRead (Ptr<Socket> lispMappingSocket)
   {
-    NS_LOG_FUNCTION (this);
+    NS_LOG_FUNCTION(this);
     Ptr<Packet> packet;
     Address from;
     while ((packet = lispMappingSocket->RecvFrom (from)))
-    {
-  	  NS_LOG_DEBUG("Receive sth from lisp. Now noting to do...");
-    }
+      {
+	NS_LOG_DEBUG("Receive sth from lisp. Now noting to do...");
+      }
   }
 
   void
@@ -206,7 +210,8 @@ namespace ns3
     Ptr<LispOverIp> lisp = GetNode ()->GetObject<LispOverIp> ();
     if (lisp != 0)
       {
-	m_lispMappingSocket->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
+	m_lispMappingSocket->SetRecvCallback (
+	    MakeNullCallback<void, Ptr<Socket> > ());
 	m_lispMappingSocket->Close ();
       }
   }
@@ -215,9 +220,12 @@ namespace ns3
   DhcpClient::StartApplication (void)
   {
     NS_LOG_FUNCTION_NOARGS ();
-    NS_LOG_DEBUG("At the start of DCHP client application, Wifi Net device's status: "<<GetNode ()->GetDevice (m_device)->IsLinkUp ());
-    InitializeAddress();
+    NS_LOG_DEBUG(
+	"At the start of DCHP client application, Wifi Net device's status: "<<GetNode ()->GetDevice (m_device)->IsLinkUp ());
+    InitializeAddress ();
     CreateSocket ();
+    // For example, Wifi Adhoc mode has no link state change(I think so...)
+    // That's why we have to send call Boot() here to send DHCP discover...
     Boot ();
     /**
      * Append a Callback to the chain. I wonder what the chain refers to.
@@ -230,10 +238,12 @@ namespace ns3
      */
     GetNode ()->GetDevice (m_device)->AddLinkChangeCallback (
 	MakeCallback (&DhcpClient::LinkStateHandler, this));
-    NS_LOG_DEBUG("Add a Link Change Callback to net device with index: "<<unsigned(m_device));
+    NS_LOG_DEBUG(
+	"Add a Link Change Callback to net device with index: "<<unsigned(m_device));
   }
 
-  void DhcpClient::InitializeAddress()
+  void
+  DhcpClient::InitializeAddress ()
   {
     Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
     uint32_t ifIndex = ipv4->GetInterfaceForDevice (
@@ -309,56 +319,65 @@ namespace ns3
 	 * handler is triggered until now if using Adhoc mode.
 	 */
 	NS_LOG_INFO("Link up at " << Simulator::Now ().GetSeconds ());
-	InitializeAddress();
+	InitializeAddress ();
 	CreateSocket ();
 	Boot ();
       }
-    else if(not linkUp)
+    else if (not linkUp)
       {
 	//TODO: If Link down, under LISP-MN => Assigned RLOC is lost => Need to update lisp
 	//data plan database.
-//	NS_ASSERT_MSG(true==false, "link state chagne, we catch u! Now can delete this assert...");
 	NS_LOG_INFO("Link down at " << Simulator::Now ().GetSeconds ()); //reinitialization
 	Simulator::Remove (m_refreshEvent); //stop refresh timer!!!!
 	Simulator::Remove (m_rebindEvent);
 	Simulator::Remove (m_timeout);
 	m_socket->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ()); //stop receiving on this socket !!!
 
-	Ptr<Ipv4> ipv4MN = GetNode ()->GetObject<Ipv4> ();
-	int32_t ifIndex = ipv4MN->GetInterfaceForDevice (
+	Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
+	int32_t ifIndex = ipv4->GetInterfaceForDevice (
 	    GetNode ()->GetDevice (m_device));
-	NS_ASSERT_MSG(ifIndex >= 0, "interface index should be >=0, but:"<<ifIndex);
-	for (uint32_t i = 0; i < ipv4MN->GetNAddresses (ifIndex); i++)
+	NS_ASSERT_MSG(ifIndex >= 0,
+		      "interface index should be >=0, but:"<<ifIndex);
+	for (uint32_t i = 0; i < ipv4->GetNAddresses (ifIndex); i++)
 	  {
-	    if (ipv4MN->GetAddress (ifIndex, i).GetLocal () == m_myAddress)
+	    if (ipv4->GetAddress (ifIndex, i).GetLocal () == m_myAddress)
 	      {
-		ipv4MN->RemoveAddress (ifIndex, i);
+		ipv4->RemoveAddress (ifIndex, i);
 		// Still set ipv4 address to 0.0.0.0
 		// Since when link down, it is still possible to transmit IP packet,
 		// which causes problems if no IP address.
-		ipv4MN->AddAddress (
+		ipv4->AddAddress (
 		    ifIndex,
-		    Ipv4InterfaceAddress (Ipv4Address ("0.0.0.0"), Ipv4Mask ("/0")));
+		    Ipv4InterfaceAddress (Ipv4Address ("0.0.0.0"),
+					  Ipv4Mask ("/0")));
 		break;
 	      }
 	  }
 
 	Ipv4StaticRoutingHelper ipv4RoutingHelper;
 	Ptr<Ipv4StaticRouting> staticRouting =
-	    ipv4RoutingHelper.GetStaticRouting (ipv4MN);
-	uint32_t i;
-	for (i = 0; i < staticRouting->GetNRoutes (); i++)
+	    ipv4RoutingHelper.GetStaticRouting (ipv4);
+	Ipv4RoutingTableEntry routeEntry;
+	/**
+	 * Two iterations are required. First one is to find the route index to be deleted.
+	 * Second one is to delete those routes found in first iteration
+	 */
+	//TODO: Don't know should remove all zeros...
+//	DhcpClient::RemoveAllZerosStaticRoute ();
+	for (uint32_t i = 0; i < staticRouting->GetNRoutes (); i++)
 	  {
-	    if (staticRouting->GetRoute (i).GetGateway () == m_gateway
-		&& staticRouting->GetRoute (i).GetInterface ()
-		    == (uint32_t) ifIndex
-		&& staticRouting->GetRoute (i).GetDest ()
-		    == Ipv4Address ("0.0.0.0"))
+	    routeEntry = staticRouting->GetRoute (i);
+	    NS_LOG_DEBUG(
+		"Processing Static Route to "<<routeEntry.GetDestNetwork());
+	    if (routeEntry.GetGateway () == m_gateway)
 	      {
+		NS_LOG_DEBUG("Static Route "<<staticRouting->GetRoute (i)<<" will be deleted!");
 		staticRouting->RemoveRoute (i);
-		break;
+		i--;
 	      }
 	  }
+	//TODO: should be improved. hard code now...
+	//Now idea is to delete all routes containing m_gateway
 	NS_LOG_INFO("Finish to processing link down related manipulation...");
       }
   }
@@ -444,6 +463,7 @@ namespace ns3
       {
 	NS_LOG_INFO("Error while sending DHCP DISCOVER to " << m_remoteAddress);
       }
+    //TODO: Is it OK to put m_state assignment here? what if m_socket cannot send a DHCP discovery...
     m_state = WAIT_OFFER;
     m_offered = false;
     m_discoverEvent = Simulator::Schedule (m_rtrs, &DhcpClient::Boot, this);
@@ -594,7 +614,6 @@ namespace ns3
     if (m_myAddress != m_offeredAddress)
       {
 	// A different IP@ to the previously assigned IP@, trigger LISP
-	std::cout<<"A different @IP!"<<std::endl;
 	m_trigLisp = true;
 	m_newLease (m_offeredAddress);
 	if (m_myAddress != Ipv4Address ("0.0.0.0"))
@@ -608,20 +627,34 @@ namespace ns3
 	Ipv4StaticRoutingHelper ipv4RoutingHelper;
 	Ptr<Ipv4StaticRouting> staticRouting =
 	    ipv4RoutingHelper.GetStaticRouting (ipv4);
-	staticRouting->SetDefaultRoute (m_gateway, ifIndex, 0);
-	//if LISP-MN compatible
-	if(DhcpClient::IsLispCompatible())
-	{
-	    uint32_t ifTunIndex = DhcpClient::GetIfTunIndex();
-	    if(ifTunIndex)
-	    {
-		staticRouting->AddNetworkRouteTo(Ipv4Address("0.0.0.0"), Ipv4Mask("/1"), ifTunIndex);
-		staticRouting->AddNetworkRouteTo(Ipv4Address("128.0.0.0"), Ipv4Mask("/1"), ifTunIndex);
-		//TODO: if wifi lost, whether to delete these two static routes?
-		NS_LOG_DEBUG("As a LISP-MN, two static routes with /1 are added so that "
-		    <<"application always use EID on TUN device as inner IP header source address");
-	    }
-	}
+	/**
+	 * GIven that DHCP client may send several DHCP Boot/Request message, it is possible
+	 * taht DHCP client receives severals time the DHCP offer. Therefore:
+	 * We should check whether the received gateway has been already in static routing table.
+	 * If yes, we don't need to insert it into routing table.
+	 */
+	if (not isGateWayExist (m_gateway))
+	  {
+	    DhcpClient::RemoveAllZerosStaticRoute ();
+	    staticRouting->SetDefaultRoute (m_gateway, ifIndex, 0);
+	    //TODO: DHCP client should know the MR/MS address
+	    //TODO: Complete this part in the future...
+	    staticRouting->AddNetworkRouteTo (Ipv4Address ("10.1.6.0"),
+					      Ipv4Mask ("255.255.255.0"),
+					      m_gateway, m_device, 0);
+	    staticRouting->AddNetworkRouteTo (Ipv4Address ("10.1.4.0"),
+					      Ipv4Mask ("255.255.255.0"),
+					      m_gateway, m_device, 0);
+	    staticRouting->AddNetworkRouteTo (Ipv4Address ("10.1.5.0"),
+					      Ipv4Mask ("255.255.255.0"),
+					      m_gateway, m_device, 0);
+	  }
+	/**
+	 * Finally, two static route to ensure that traffic always uses EID as source address
+	 * will be added when creating LISP-MN node.
+	 * staticRouting->AddNetworkRouteTo(Ipv4Address("0.0.0.0"), Ipv4Mask("/1"), ifTunIndex);
+	 * staticRouting->AddNetworkRouteTo(Ipv4Address("128.0.0.0"), Ipv4Mask("/1"), ifTunIndex);
+	 */
       }
 
     m_remoteAddress = InetSocketAddress::ConvertFrom (from).GetIpv4 ();
@@ -630,9 +663,11 @@ namespace ns3
     // Do lisp-related manipulation, such as create database, update map entry in database.
     // Just m_trigLisp = true, which means has a different @IP, need to send the newly
     // EID-RLOC mapping to lispOverIp.
-    if(DhcpClient::IsLispCompatible() and m_trigLisp)
+    if (DhcpClient::IsLispCompatible () and m_trigLisp)
       {
-	DhcpClient::LispDataBaseManipulation(DhcpClient::GetEid());
+	NS_LOG_DEBUG(
+	    "A different assigned IP address! LISP processing should be called...");
+	DhcpClient::LispDataBaseManipulation (DhcpClient::GetEid ());
       }
     m_offerList.clear ();
     m_refreshEvent = Simulator::Schedule (m_renew, &DhcpClient::Request, this);
@@ -644,21 +679,73 @@ namespace ns3
     m_trigLisp = false;
   }
 
-  bool DhcpClient::IsLispCompatible()
+  void
+  DhcpClient::RemoveAllZerosStaticRoute ()
   {
-    return GetNode()->GetObject<LispOverIpv4>() != 0;
+    Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
+    Ipv4StaticRoutingHelper ipv4RoutingHelper;
+    Ptr<Ipv4StaticRouting> staticRouting = ipv4RoutingHelper.GetStaticRouting (
+	ipv4);
+    int32_t ifIndex = ipv4->GetInterfaceForDevice (
+	GetNode ()->GetDevice (m_device));
+    for (uint32_t i = 0; i < staticRouting->GetNRoutes (); i++)
+      {
+	if (staticRouting->GetRoute (i).GetGateway () == Ipv4Address ("0.0.0.0")
+	    && staticRouting->GetRoute (i).GetInterface () == (uint32_t) ifIndex
+	    && staticRouting->GetRoute (i).GetDest ()
+		== Ipv4Address ("0.0.0.0"))
+	  {
+	    NS_LOG_DEBUG("Removing all 0 static route...");
+	    staticRouting->RemoveRoute (i);
+	  }
+      }
   }
 
-  bool DhcpClient::IsLispDataBasePresent()
+  bool
+  DhcpClient::isGateWayExist (Ipv4Address m_gateway)
   {
     bool result = false;
-    if(DhcpClient::IsLispCompatible()){
-	result = ((GetNode()->GetObject<LispOverIpv4>())->GetMapTablesV4()->GetNMapEntriesLispDataBase() != 0);
-    }
+    Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
+    Ipv4StaticRoutingHelper ipv4RoutingHelper;
+    Ptr<Ipv4StaticRouting> staticRouting = ipv4RoutingHelper.GetStaticRouting (
+	ipv4);
+    int32_t ifIndex = ipv4->GetInterfaceForDevice (
+	GetNode ()->GetDevice (m_device));
+    for (uint32_t i = 0; i < staticRouting->GetNRoutes (); i++)
+      {
+	if (staticRouting->GetRoute (i).GetGateway () == m_gateway
+	    && staticRouting->GetRoute (i).GetInterface () == (uint32_t) ifIndex
+	    && staticRouting->GetRoute (i).GetDest ()
+		== Ipv4Address ("0.0.0.0"))
+	  {
+	    result = true;
+	    break;
+	  }
+      }
     return result;
   }
 
-  uint32_t DhcpClient::GetIfTunIndex()
+  bool
+  DhcpClient::IsLispCompatible ()
+  {
+    return GetNode ()->GetObject<LispOverIpv4> () != 0;
+  }
+
+  bool
+  DhcpClient::IsLispDataBasePresent ()
+  {
+    bool result = false;
+    if (DhcpClient::IsLispCompatible ())
+      {
+	result =
+	    ((GetNode ()->GetObject<LispOverIpv4> ())->GetMapTablesV4 ()->GetNMapEntriesLispDataBase ()
+		!= 0);
+      }
+    return result;
+  }
+
+  uint32_t
+  DhcpClient::GetIfTunIndex ()
   {
     NS_LOG_FUNCTION(this);
     Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
@@ -669,14 +756,16 @@ namespace ns3
      * Iterate Net device index and compare its type id name to find virtual net device index.
      * Then get @IP address
      */
-    for (tunDeviceIndex = 1; tunDeviceIndex < GetNode ()->GetNDevices (); tunDeviceIndex++)
+    for (tunDeviceIndex = 1; tunDeviceIndex < GetNode ()->GetNDevices ();
+	tunDeviceIndex++)
       {
 	Ptr<NetDevice> curDev = GetNode ()->GetDevice (tunDeviceIndex);
 	// Be careful with compare() method.
 	if (curDev->GetInstanceTypeId ().GetName () == "ns3::VirtualNetDevice")
 	  {
 	    NS_LOG_DEBUG("TUN device index: "<<unsigned(tunDeviceIndex));
-	    NS_LOG_DEBUG("Device type: "<<curDev->GetInstanceTypeId ().GetName ());
+	    NS_LOG_DEBUG(
+		"Device type: "<<curDev->GetInstanceTypeId ().GetName ());
 	    ifTunIndex = ipv4->GetInterfaceForDevice (
 		GetNode ()->GetDevice (tunDeviceIndex));
 	    NS_LOG_DEBUG("TUN interface Index: "<< unsigned(ifTunIndex));
@@ -696,21 +785,21 @@ namespace ns3
     return ifTunIndex;
   }
 
-  Ptr<EndpointId> DhcpClient::GetEid()
+  Ptr<EndpointId>
+  DhcpClient::GetEid ()
   {
     NS_LOG_FUNCTION(this);
     Ptr<EndpointId> eid;
-    uint32_t ifTunIndex = DhcpClient::GetIfTunIndex();
+    uint32_t ifTunIndex = DhcpClient::GetIfTunIndex ();
     Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
-    if(ifTunIndex)
-    {
-      Ipv4Address eidAddress =
-	  ipv4->GetAddress (ifTunIndex, 0).GetLocal ();
+    if (ifTunIndex)
+      {
+	Ipv4Address eidAddress = ipv4->GetAddress (ifTunIndex, 0).GetLocal ();
 //      Ipv4Mask eidMask = ipv4->GetAddress (ifTunIndex, 0).GetMask ();
-      // LISP-MN, as a single machine, we use "/32" as EID mask
-      eid = Create<EndpointId> (eidAddress, Ipv4Mask("/32"));
-      NS_LOG_DEBUG("The retrieved EID:"<< eid->Print());
-    }
+	// LISP-MN, as a single machine, we use "/32" as EID mask
+	eid = Create<EndpointId> (eidAddress, Ipv4Mask ("/32"));
+	NS_LOG_DEBUG("The retrieved EID:"<< eid->Print());
+      }
     /**
      * TODO: Maybe we should consider the case where TUN net device is installed.
      * But, no @IP is assigned!
@@ -718,7 +807,8 @@ namespace ns3
     return eid;
   }
 
-  void DhcpClient::LispDataBaseManipulation(Ptr<EndpointId> eid)
+  void
+  DhcpClient::LispDataBaseManipulation (Ptr<EndpointId> eid)
   {
     /**
      * Send Mapping socket control message to lispOverIpv4 object so that
@@ -730,7 +820,7 @@ namespace ns3
      * and let the latter to manipulate the map tables.
      */
     //TODO:How if we use IP aliasing (secondary @IP on the Netdevice)?
-    Ptr<LispOverIpv4> lisp = GetNode()->GetObject<LispOverIpv4>();
+    Ptr<LispOverIpv4> lisp = GetNode ()->GetObject<LispOverIpv4> ();
     Ptr<MappingSocketMsg> mapSockMsg = Create<MappingSocketMsg> ();
     Ptr<Locators> locators = Create<LocatorsImpl> ();
     /**
@@ -743,8 +833,8 @@ namespace ns3
      */
     mapSockMsg->SetEndPoint (eid);
     Ptr<RlocMetrics> rlocMetrics = Create<RlocMetrics> (100, 100, true);
-    rlocMetrics->SetMtu(1500);
-    rlocMetrics->SetIsLocalIf(true);
+    rlocMetrics->SetMtu (1500);
+    rlocMetrics->SetIsLocalIf (true);
     Ptr<Locator> locator = Create<Locator> (m_offeredAddress);
     locator->SetRlocMetrics (rlocMetrics);
     locators->InsertLocator (locator);
@@ -763,9 +853,13 @@ namespace ns3
      * 3) In this case, maybe we don't need to care about MAP flags.
      */
     MappingSocketMsgHeader mapSockHeader;
-    mapSockHeader.SetMapAddresses ((int) mapSockHeader.GetMapAddresses() | static_cast<int> (LispMappingSocket::MAPA_RLOC));
+    mapSockHeader.SetMapAddresses (
+	(int) mapSockHeader.GetMapAddresses ()
+	    | static_cast<int> (LispMappingSocket::MAPA_RLOC));
     // Question: why not consider LispMappingSocket::MAPA_EID, LispMappingSocket::MAPA_EIDMASK indicate implicitly the presence of EID?
-    mapSockHeader.SetMapAddresses ((int) mapSockHeader.GetMapAddresses() | static_cast<int> (LispMappingSocket::MAPA_EIDMASK));
+    mapSockHeader.SetMapAddresses (
+	(int) mapSockHeader.GetMapAddresses ()
+	    | static_cast<int> (LispMappingSocket::MAPA_EIDMASK));
 
     /**
      *  This newly assigned RLOC-EID mapping should be inserted into lisp
@@ -780,8 +874,10 @@ namespace ns3
     Ptr<Packet> packet = Create<Packet> (buf, 256);
     packet->AddHeader (mapSockHeader);
     m_lispMappingSocket->Send (packet);
-    NS_LOG_DEBUG("Send newly assigned RLOC-EID to lispOverIpv4 so that LISP-MN's Database (not Cache) can be updated!");
-    NS_LOG_DEBUG("RLOCs sent by DHCP client: \n"<<mapSockMsg->GetLocators()->Print());
+    NS_LOG_DEBUG(
+	"Send newly assigned RLOC-EID to lispOverIpv4 so that LISP-MN's Database (not Cache) can be updated!");
+    NS_LOG_DEBUG(
+	"RLOCs sent by DHCP client: \n"<<mapSockMsg->GetLocators()->Print());
 
   }
 

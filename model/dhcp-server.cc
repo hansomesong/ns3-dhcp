@@ -128,7 +128,7 @@ void DhcpServer::StartApplication (void)
   NS_LOG_FUNCTION (this);
 
   NS_ASSERT_MSG (m_minAddress < m_maxAddress,"Invalid Address range");
-
+  //TODO: Should check m_minAddress and m_maxAddress are in the same network with DHCP server address
   m_occupiedRange = 0;
 
   if (m_socket == 0)

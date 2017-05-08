@@ -105,6 +105,16 @@ private:
   void InitializeAddress(void);
 
   /*
+   * \brief check whether the received gateway in DHCP offer is alread in static routing table
+   */
+  bool isGateWayExist (Ipv4Address m_gateway);
+
+  /*
+   * \brief as soon as default gateway is received from DHCP, delete all 0 static routes...
+   */
+  void RemoveAllZerosStaticRoute();
+
+  /*
    * \brief Stops the DHCP client application
    */
   virtual void StopApplication (void);
