@@ -595,21 +595,32 @@ namespace ns3
     Ptr<Ipv4> ipv4 = GetNode ()->GetObject<Ipv4> ();
     int32_t ifIndex = ipv4->GetInterfaceForDevice (
 	GetNode ()->GetDevice (m_device));
-    // Before assign the received m_offeredAddress, remove the previous @IP
-    // However, one Ipv4Interface may have more than one Ipv4Address (e.g. IP Aliasing)
-    // That's why we need to iterate each Ipv4Address on NetDevice where DHCP client manages.
+    /**
+     * Before assign the received m_offeredAddress, remove the previous @IP
+     * However, one Ipv4Interface may have more than one Ipv4Address (e.g. IP Aliasing)
+     * That's why we need to iterate each Ipv4Address on NetDevice where DHCP client manages.
+     * ATTENTION: I don't why but I actually encounter a bug where one interface
+     * has several IP addresses among them several are 0.0.0.0!
+     */
     for (uint32_t i = 0; i < ipv4->GetNAddresses (ifIndex); i++)
       {
-	if (ipv4->GetAddress (ifIndex, i).GetLocal () == m_myAddress)
+	Ipv4Address currIpAddr = ipv4->GetAddress (ifIndex, i).GetLocal ();
+	if ( currIpAddr == m_myAddress or currIpAddr == Ipv4Address("0.0.0.0") )
 	  {
 	    ipv4->RemoveAddress (ifIndex, i);
-	    break;
+	    i--;
+	    //TODO: I don't know the negative impact if removing the break...
 	  }
       }
     ipv4->AddAddress (
 	ifIndex,
 	Ipv4InterfaceAddress ((Ipv4Address) m_offeredAddress, m_myMask));
     ipv4->SetUp (ifIndex);
+    NS_LOG_DEBUG(""<<(Ipv4Address) m_offeredAddress<<" should be added to interface "<<ifIndex);
+    for (uint32_t i = 0; i < ipv4->GetNAddresses (ifIndex); i++)
+      {
+	NS_LOG_DEBUG(""<<ipv4->GetAddress (ifIndex, i).GetLocal ()<<" has be actually added to interface "<<ifIndex<<" with index "<<i);
+      }
 
     if (m_myAddress != m_offeredAddress)
       {
